@@ -21,7 +21,7 @@ jobs:
     steps:
     - uses: actions/checkout@v2
 
-    - uses: diku-dk/install-futhark
+    - uses: diku-dk/install-futhark@v1
       with:
         version: 'nightly'
 
