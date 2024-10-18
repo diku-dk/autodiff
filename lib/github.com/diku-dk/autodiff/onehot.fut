@@ -31,6 +31,8 @@ module type onehot = {
   -- everywhere else.
   val point 'a : (one: a) -> (zero: a) -> gen [1] a
 
+  val bool : gen [1] bool
+
   val i8 : gen [1] i8
   val i16 : gen [1] i16
   val i32 : gen [1] i32
@@ -78,6 +80,7 @@ module onehot : onehot = {
   def point one zero = {size = witness 1,
                         gen = \i -> if i == 0i64 then one else zero}
 
+  def bool = point true false
   def i8 = point 1i8 0i8
   def i16 = point 1i16 0i16
   def i32 = point 1i32 0i32
