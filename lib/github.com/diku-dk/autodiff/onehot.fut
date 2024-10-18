@@ -45,6 +45,11 @@ module type onehot = {
   val f32 : gen [1] f32
   val f64 : gen [1] f64
 
+  -- | A generator for a fixed value that (as far as generation is
+  -- concerned) contains no other values. This is useful for input or
+  -- output that is known not to contribute to the derivative.
+  val fixed 'a : a -> gen [0] a
+
   -- | Produce a generator for pairs based on generators for the
   -- components.
   val pair [n][m] 'a 'b : gen [n] a -> gen [m] b -> gen [n+m] (a,b)
@@ -85,6 +90,8 @@ module onehot : onehot = {
   def f16 = point 1f16 0f16
   def f32 = point 1f32 0f32
   def f64 = point 1f64 0f64
+
+  def fixed a = { size = witness 0, gen = const a }
 
   def pair [n][m] 'a 'b (x: gen[n]a) (y: gen[m]b) =
     { size = witness (n+m),
