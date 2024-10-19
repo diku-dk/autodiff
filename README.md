@@ -3,6 +3,8 @@
 This is a collection of small utilities for working with AD in
 Futhark.
 
+[See examples here.](examples/)
+
 ## Installation
 
 ```
@@ -13,6 +15,11 @@ $ futhark pkg sync
 
 ```Futhark
 > import "lib/github.com/diku-dk/autodiff/onehot"
+> import "lib/github.com/diku-dk/autodiff/autodiff"
+> grad64 f64.tanh 2.0
+7.065082485316443e-2
+> grad64 (grad64 f64.tanh) 2.0
+-0.13621868742711296
 > onehots onehot.(arr (pair f64 f32)) : [][3](f64,f32)
 [[(1.0, 0.0), (0.0, 0.0), (0.0, 0.0)],
  [(0.0, 1.0), (0.0, 0.0), (0.0, 0.0)],
@@ -20,8 +27,6 @@ $ futhark pkg sync
  [(0.0, 0.0), (0.0, 1.0), (0.0, 0.0)],
  [(0.0, 0.0), (0.0, 0.0), (1.0, 0.0)],
  [(0.0, 0.0), (0.0, 0.0), (0.0, 1.0)]]
-> grad onehot.(f64) f64.sin 3.14
-[-0.9999987317275395]
 > grad onehot.(arr f64) (map f64.sin) [0, 1, 2]
 [[1.0, 0.0, -0.0],
  [0.0, 0.5403023058681398, -0.0],

@@ -120,6 +120,3 @@ module onehot : onehot = {
 -- | Generate all one-hot values possible for a given generator.
 def onehots [n] 'a (gen: onehot.gen [n] a) : [n]a =
   tabulate n (onehot.onehot gen)
-
--- | Compute the gradient of a function given a one-hot generator for its result.
-def grad gen f x = map (vjp f x) (onehots gen)
