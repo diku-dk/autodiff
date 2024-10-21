@@ -18,13 +18,17 @@ module type onehot = {
   -- with *n* elements, the size of the space would be *n*. If a
   -- generator is asked to produce a value outside of its space, the
   -- result must be entirely zero.
+  --
+  -- The size of the space is usually the same as the size of the
+  -- value (or the sum of the sizes of compound values), but
+  -- combinators such as `cycle` and `resize` can be used to change
+  -- this property.
   type^ gen [n] 'a
 
   -- | Generate a one-hot value that is zero everywhere except at position 'i'.
   val onehot [n] 'a : gen [n] a -> (i: i64) -> a
 
-  -- | The size of the generation space; equivalently, the size of a
-  -- value of type 'a'.
+  -- | The size of the generation space.
   val size [n] 'a : gen [n] a -> i64
 
   -- | Resize the generation space. This does not affect the actual
@@ -69,7 +73,9 @@ module type onehot = {
   -- usage site.
   val arr [n][m] 'a : gen [m] a -> gen [n*m] ([n]a)
 
-  -- | Repeats the elements of a generator.
+  -- | Repeats the elements of a generator. This can be useful for
+  -- constructing one-hot vectors in cases where we know some of the
+  -- inputs or outputs of the function are independent.
   val cycle [n][r] 'a : gen [n] a -> gen [n] ([r]a)
 }
 
