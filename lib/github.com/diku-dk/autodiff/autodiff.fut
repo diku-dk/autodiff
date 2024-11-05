@@ -34,3 +34,15 @@ def grad64 = grad_unit onehot.f64
 -- | Compute the gradient of an arbitrary differentiable function
 -- given a one-hot generator for its result.
 def grad_rev gen f x = map (vjp f x) (onehots gen)
+
+-- | Hessian-vector product.
+def hvp32 f x v =
+  grad32 (\x -> f32.sum (map2 (*) (grad32 f x) v)) x
+
+-- | Compute Jacobian using forward-mode AD.
+def jacfwd gen f x =
+  map (jvp f x) (onehots gen)
+
+-- | Compute Jacobian using reverse-mode AD.
+def jacrev [n] 'a 'b (gen: onehot.gen [n] b) (f: a -> b) (x: a) : [n]a =
+  map (vjp f x) (onehots gen)
