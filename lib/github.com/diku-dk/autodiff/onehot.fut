@@ -25,7 +25,12 @@ module type onehot = {
   -- this property.
   type^ gen [n] 'a
 
-  -- | Generate a one-hot value that is zero everywhere except at position 'i'.
+  -- | Generate a one-hot value that is zero everywhere except at
+  -- positions `i` where `p i` is true.
+  val mk [n] 'a : gen [n] a -> (p: i64 -> bool) -> a
+
+  -- | Generate a one-hot value that is zero everywhere except at
+  -- position `i`.
   val onehot [n] 'a : gen [n] a -> (i: i64) -> a
 
   -- | The size of the generation space.
@@ -33,7 +38,7 @@ module type onehot = {
 
   -- | Resize the generation space. This does not affect the actual
   -- values generated.
-  val resize [n][m] 'a : gen [n] a -> gen [m] a
+  val resize [n] [m] 'a : gen [n] a -> gen [m] a
 
   -- | Produces a generator that is `one` at index 0 and `zero`
   -- everywhere else.
@@ -62,63 +67,70 @@ module type onehot = {
 
   -- | Produce a generator for pairs based on generators for the
   -- components.
-  val pair [n][m] 'a 'b : gen [n] a -> gen [m] b -> gen [n+m] (a,b)
+  val pair [n] [m] 'a 'b : gen [n] a -> gen [m] b -> gen [n + m] (a, b)
 
   -- | Produce a generator for triples based on generators for the
   -- components.
-  val triple [n][m][k] 'a 'b 'c : gen [n] a -> gen [m] b -> gen [k] c -> gen [n+m+k] (a,b,c)
+  val triple [n] [m] [k] 'a 'b 'c : gen [n] a -> gen [m] b -> gen [k] c -> gen [n + m + k] (a, b, c)
 
   -- | A generator for arrays, given a generator for the elements.
   -- Polymorphic in the array size, which will be inferred at the
   -- usage site.
-  val arr [n][m] 'a : gen [m] a -> gen [n*m] ([n]a)
+  val arr [n] [m] 'a : gen [m] a -> gen [n * m] ([n]a)
 
   -- | Repeats the elements of a generator. This can be useful for
   -- constructing one-hot vectors in cases where we know some of the
   -- inputs or outputs of the function are independent.
-  val cycle [n][r] 'a : gen [n] a -> gen [n] ([r]a)
+  val cycle [n] [r] 'a : gen [n] a -> gen [n] ([r]a)
 }
 
 module onehot : onehot = {
-  type^ gen [n] 'a = {
-      size: [0][n](),
-      gen: i64 -> a
+  type^ gen [n] 'a =
+    { size: [0][n]()
+    , gen: (i64 -> bool) -> a
     }
 
   def witness x = [] : [0][x]()
 
-  def onehot 'a (gen: gen [] a) i = gen.gen i
+  def mk 'a (gen: gen [] a) p = gen.gen p
+  def onehot 'a (gen: gen [] a) i = gen.gen (== i)
   def size [n] 'a (_: gen [n] a) = n
 
-  def resize [n][m] 'a (gen: gen [n] a) = {size = witness m, gen = gen.gen}
+  def resize [n] [m] 'a (gen: gen [n] a) = {size = witness m, gen = gen.gen}
 
-  def point one zero = {size = witness 1,
-                        gen = \i -> if i == 0i64 then one else zero}
-  def fixed a = { size = witness 0, gen = const a }
-
-  def pair [n][m] 'a 'b (x: gen[n]a) (y: gen[m]b) =
-    { size = witness (n+m),
-      gen = \i -> (onehot x i,
-                   onehot y (i-n))
+  def point one zero =
+    { size = witness 1
+    , gen = \p -> if p 0i64 then one else zero
     }
 
-  def triple [n][m][k] 'a 'b 'c (a:gen[n]a) (b:gen[m]b) (c:gen[k]c) =
-    { size = witness (n+m+k)
-    , gen = \i -> let ((a',b'),c') = onehot (pair (pair a b) c) i
-                  in (a',b',c')
+  def fixed a = {size = witness 0, gen = const a}
+
+  def pair [n] [m] 'a 'b (x: gen [n] a) (y: gen [m] b) =
+    { size = witness (n + m)
+    , gen =
+        \p ->
+          ( x.gen p
+          , y.gen (\i -> p (i + n))
+          )
     }
 
-  def arr [n][m] 'a (gen: gen [m] a) =
-    { size = witness (n*m),
-      gen = \i -> tabulate n (\l ->
-                                if i / m == l
-                                then onehot gen (i %% m)
-                                else onehot gen (-1))
+  def triple [n] [m] [k] 'a 'b 'c (a: gen [n] a) (b: gen [m] b) (c: gen [k] c) =
+    { size = witness (n + m + k)
+    , gen =
+        \p ->
+          let ((a', b'), c') = (pair (pair a b) c).gen p
+          in (a', b', c')
     }
 
-  def cycle [n][r] 'a (gen: gen [n] a) =
-    { size = witness n,
-      gen = \i -> replicate r (gen.gen (if i < 0 then -1 else i%%n))
+  def arr [n] [m] 'a (gen: gen [m] a) =
+    { size = witness (n * m)
+    , gen =
+        \p -> tabulate n (\l -> gen.gen (\i -> p (i + (l * m))))
+    }
+
+  def cycle [n] [r] 'a (gen: gen [n] a) =
+    { size = witness n
+    , gen = \p -> replicate r (gen.gen (\i -> p (if i < 0 then -1 else i %% n)))
     }
 
   def bool = point true false
