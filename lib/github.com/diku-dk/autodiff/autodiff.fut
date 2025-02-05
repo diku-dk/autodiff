@@ -37,7 +37,10 @@ def grad_rev gen f x = map (vjp f x) (onehots gen)
 
 -- | Hessian-vector product.
 def hvp32 f x v =
-  grad32 (\x -> f32.sum (map2 (*) (grad32 f x) v)) x
+  jvp (grad32 f) x v
+
+def hvp64 f x v =
+  jvp (grad64 f) x v
 
 -- | Compute Jacobian using forward-mode AD.
 def jacfwd gen f x =
