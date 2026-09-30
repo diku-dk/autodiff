@@ -9,7 +9,7 @@ local def singular 'a (x: onehot.gen [1] a) = onehot.onehot x 0
 -- | Compute the tangent of a scalar-valued function given a one-hot
 -- generator for its unit domain. The name of this function is a
 -- contraction of "derivative of argument".
-def darg_unit gen f x = jvp f x (singular gen)
+def darg_unit 'a 'b gen (f: a -> b) x : *b = jvp f x (singular gen)
 
 -- | Convenience function for computing the tangent of an
 -- 'f32'-valued differentiable function.

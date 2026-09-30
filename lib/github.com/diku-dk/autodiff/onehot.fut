@@ -31,7 +31,7 @@ module type onehot = {
 
   -- | Generate a one-hot value that is zero everywhere except at
   -- position `i`.
-  val onehot [n] 'a : gen [n] a -> (i: i64) -> a
+  val onehot [n] 'a : gen [n] a -> (i: i64) -> *a
 
   -- | The size of the generation space.
   val size [n] 'a : gen [n] a -> i64
@@ -87,7 +87,7 @@ module type onehot = {
 module onehot : onehot = {
   type^ gen [n] 'a =
     { size: [0][n]()
-    , gen: (i64 -> bool) -> a
+    , gen: (i64 -> bool) -> *a
     }
 
   def witness x = [] : [0][x]()
@@ -98,17 +98,17 @@ module onehot : onehot = {
 
   def resize [n] [m] 'a (gen: gen [n] a) = {size = witness m, gen = gen.gen}
 
-  def point one zero =
+  def point 'a one zero =
     { size = witness 1
-    , gen = \p -> if p 0i64 then one else zero
+    , gen = \p : *a -> if p 0i64 then copy one else copy zero
     }
 
-  def fixed a = {size = witness 0, gen = const a}
+  def fixed 'a (a: a) = {size = witness 0, gen = \_ : *a -> copy a}
 
-  def pair [n] [m] 'a 'b (x: gen [n] a) (y: gen [m] b) =
+  def pair [n] [m] 'a 'b (x: gen [n] a) (y: gen [m] b) : gen [n + m] (a, b) =
     { size = witness (n + m)
     , gen =
-        \p ->
+        \p : *(a, b) ->
           ( x.gen p
           , y.gen (\i -> p (i + n))
           )
@@ -117,7 +117,7 @@ module onehot : onehot = {
   def triple [n] [m] [k] 'a 'b 'c (a: gen [n] a) (b: gen [m] b) (c: gen [k] c) =
     { size = witness (n + m + k)
     , gen =
-        \p ->
+        \p : *(a, b, c) ->
           let ((a', b'), c') = (pair (pair a b) c).gen p
           in (a', b', c')
     }
@@ -125,12 +125,12 @@ module onehot : onehot = {
   def arr [n] [m] 'a (gen: gen [m] a) =
     { size = witness (n * m)
     , gen =
-        \p -> tabulate n (\l -> gen.gen (\i -> p (i + (l * m))))
+        \p : *[]a -> tabulate n (\l -> gen.gen (\i -> p (i + (l * m))))
     }
 
   def cycle [n] [r] 'a (gen: gen [n] a) =
     { size = witness n
-    , gen = \p -> replicate r (gen.gen (\i -> p (if i < 0 then -1 else i %% n)))
+    , gen = \p : *[]a -> replicate r (gen.gen (\i -> p (if i < 0 then -1 else i %% n)))
     }
 
   def bool = point true false
@@ -149,7 +149,7 @@ module onehot : onehot = {
 }
 
 -- | Generate all one-hot values possible for a given generator.
-def onehots [n] 'a (gen: onehot.gen [n] a) : [n]a =
+def onehots [n] 'a (gen: onehot.gen [n] a) : *[n]a =
   tabulate n (onehot.onehot gen)
 
 -- | Compute the gradient of a function given a one-hot generator for its result.
