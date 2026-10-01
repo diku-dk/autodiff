@@ -38,9 +38,12 @@ def csr_to_dense [m] [n]
 -- vector-Jacobian products).
 module rows
   : {
+      type prepared [n] [m] [nnz] =
+        ([m + 1]i64, [nnz]i64, [n + 1]i64, [nnz]i64, [m]i64)
+
       val eval_prepared_vjp_csr [m] [n] [nnz] :
         (f: [n]f64 -> [m]f64)
-        -> (prepared: ([m + 1]i64, [nnz]i64, [n + 1]i64, [nnz]i64, [m]i64))
+        -> prepared [n] [m] [nnz]
         -> (x: [n]f64)
         -> ([m + 1]i64, [nnz]i64, [nnz]f64)
 
@@ -49,6 +52,9 @@ module rows
         -> (prepared: ([m + 1]i64, [nnz]i64, [n + 1]i64, [nnz]i64, [m]i64))
         -> (x: [n]f64) -> [m][n]f64
     } = {
+  type prepared [n] [m] [nnz] =
+    ([m + 1]i64, [nnz]i64, [n + 1]i64, [nnz]i64, [m]i64)
+
   def vjp_compressed_to_csr_vals [m] [n] [nnz] [d]
                                  (row_offs: [m + 1]i64)
                                  (row_idx: [nnz]i64)
@@ -211,9 +217,12 @@ module rows
 -- via Jacobian-vector products).
 module cols
   : {
-      val eval_prepared_jvp_csr [m] [n] [nnz] [b] :
+      type prepared [n] [m] [nnz] =
+        ([m + 1]i64, [nnz]i64, [n + 1]i64, [nnz]i64, [n]i64)
+
+      val eval_prepared_jvp_csr [m] [n] [nnz] :
         (f: [n]f64 -> [m]f64)
-        -> (prepared: ([m + 1]i64, [nnz]i64, [n + 1]i64, [b]i64, [n]i64))
+        -> prepared [n] [m] [nnz]
         -> (x: [n]f64)
         -> ([m + 1]i64, [nnz]i64, [nnz]f64)
 
@@ -222,6 +231,9 @@ module cols
         -> (prepared: ([m + 1]i64, [nnz]i64, [n + 1]i64, [b]i64, [n]i64))
         -> (x: [n]f64) -> [m][n]f64
     } = {
+  type prepared [n] [m] [nnz] =
+    ([m + 1]i64, [nnz]i64, [n + 1]i64, [nnz]i64, [n]i64)
+
   -- Reconstruction helpers:
   -- Reconstruct only the nonzero Jacobian values in CSR order.
   -- If row_idx[p] = j belongs to row i, then
