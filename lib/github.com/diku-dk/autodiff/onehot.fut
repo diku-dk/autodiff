@@ -1,15 +1,13 @@
--- | Facilities for constructing one-hot values suitable for use with
--- AD.
+-- | Facilities for constructing one-hot values suitable for use with AD.
 --
--- A one-hot vector (or more generally, a one-hot value) is a value
--- that is zero everywhere except at a specific point.
+-- A one-hot vector (or more generally, a one-hot value) is a value that is zero
+-- everywhere except at a specific point.
 --
--- Operationally, constructing a one-hot vector is simply a
--- `tabulate`@term where the index is inspected to produce either zero
--- or one. However, when working with more complicated data types,
--- such as pairs, records, or nested arrays, this can get quite
--- verbose, and the index arithmetic is easy to get wrong. This file
--- provides helper functions for building one-hot value generators.
+-- Operationally, constructing a one-hot vector is simply a `tabulate` where the
+-- index is inspected to produce either zero or one. However, when working with
+-- more complicated data types, such as pairs, records, or nested arrays, this
+-- can get quite verbose, and the index arithmetic is easy to get wrong. This
+-- file provides helper functions for building one-hot value generators.
 
 module type onehot = {
   -- | A generator that produces values of type `a` in a space of size
