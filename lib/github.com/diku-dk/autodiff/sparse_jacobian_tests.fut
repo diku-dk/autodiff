@@ -1,5 +1,6 @@
 -- | ignore
 
+module CSR = import "pattern_csr"
 import "sparse_jacobian"
 
 -- One-hot vector

@@ -7,8 +7,8 @@
 --
 -- Based on work by Elias Smedegaard.
 
-module CSR = import "pattern_csr"
-module Col = import "partial_d2_coloring"
+local module CSR = import "pattern_csr"
+local module Col = import "partial_d2_coloring"
 
 local
 def num_colors_of [l] (colors: [l]i64) : i64 =
