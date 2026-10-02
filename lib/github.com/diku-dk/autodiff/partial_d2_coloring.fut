@@ -79,6 +79,7 @@ def partial_d2_color_cols_order [m] [n] [d0] [d1]
       in (colors1, seen1, stamp1, k1)
   in colors_final
 
+-- | Color columns.
 def partial_d2_color_cols [m] [n] [d0] [d1]
                           (row_offs: [m + 1]i64)
                           (row_idx: [d0]i64)
@@ -86,7 +87,7 @@ def partial_d2_color_cols [m] [n] [d0] [d1]
                           (col_idx: [d1]i64) : [n]i64 =
   partial_d2_color_cols_order row_offs row_idx col_offs col_idx (iota n)
 
--- Color ROWS instead of columns:
+-- | Color rows instead of columns:
 def partial_d2_color_rows [m] [n] [d0] [d1]
                           (row_offs: [m + 1]i64)
                           (row_idx: [d0]i64)

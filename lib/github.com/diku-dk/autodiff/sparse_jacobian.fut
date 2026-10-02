@@ -41,6 +41,9 @@ module rows
       type prepared [n] [m] [nnz] =
         ([m + 1]i64, [nnz]i64, [n + 1]i64, [nnz]i64, [m]i64)
 
+      val prepare_vjp [m] [n] :
+        [m][n]bool -> ?[nnz].prepared [n] [m] [nnz]
+
       val eval_prepared_vjp_csr [m] [n] [nnz] :
         (f: [n]f64 -> [m]f64)
         -> prepared [n] [m] [nnz]
@@ -49,7 +52,7 @@ module rows
 
       val eval_prepared_vjp_dense [m] [n] [nnz] :
         (f: [n]f64 -> [m]f64)
-        -> (prepared: ([m + 1]i64, [nnz]i64, [n + 1]i64, [nnz]i64, [m]i64))
+        -> prepared [n] [m] [nnz]
         -> (x: [n]f64) -> [m][n]f64
     } = {
   type prepared [n] [m] [nnz] =
@@ -220,15 +223,18 @@ module cols
       type prepared [n] [m] [nnz] =
         ([m + 1]i64, [nnz]i64, [n + 1]i64, [nnz]i64, [n]i64)
 
+      val prepare_jvp [m] [n] :
+        [m][n]bool -> ?[nnz].prepared [n] [m] [nnz]
+
       val eval_prepared_jvp_csr [m] [n] [nnz] :
         (f: [n]f64 -> [m]f64)
         -> prepared [n] [m] [nnz]
         -> (x: [n]f64)
         -> ([m + 1]i64, [nnz]i64, [nnz]f64)
 
-      val eval_prepared_jvp_dense [m] [n] [nnz] [b] :
+      val eval_prepared_jvp_dense [m] [n] [nnz] :
         (f: [n]f64 -> [m]f64)
-        -> (prepared: ([m + 1]i64, [nnz]i64, [n + 1]i64, [b]i64, [n]i64))
+        -> prepared [n] [m] [nnz]
         -> (x: [n]f64) -> [m][n]f64
     } = {
   type prepared [n] [m] [nnz] =
