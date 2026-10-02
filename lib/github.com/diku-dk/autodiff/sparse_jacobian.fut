@@ -1,7 +1,7 @@
 -- | Efficiently computing sparse Jacobians.
 --
 -- This file exposes a lot of facilities, but you probably want to use the
--- `auto` module.
+-- `mk_auto` module.
 --
 -- ## Acknowledgements
 --
@@ -17,26 +17,27 @@ def num_colors_of [l] (colors: [l]i64) : i64 =
   else 1 + i64.maximum colors
 
 local
-def seed_for_color [l] (colors: [l]i64) (c: i64) : [l]f64 =
-  map (\i -> if i == c then 1 else 0) colors
+def seed_for_color [l] 't (zero: t) (one: t) (colors: [l]i64) (c: i64) : [l]t =
+  map (\i -> if i == c then one else zero) colors
 
 -- Convert a CSR matrix to a dense matrix.
 local
-def csr_to_dense [m] [n]
+def csr_to_dense [m] [n] [nnz] 't
+                 (zero: t)
                  (row_offs: [m + 1]i64)
                  (row_idx: []i64)
-                 (vals: []f64) : [m][n]f64 =
+                 (vals: [nnz]t) : [m][n]t =
   tabulate m \i ->
     let s = row_offs[i]
     let e = row_offs[i + 1]
     let cols = row_idx[s:e]
     let vs = vals[s:e]
-    let row0: [n]f64 = replicate n 0.0f64
+    let row0 = replicate n zero
     in scatter row0 cols vs
 
 -- | Facilities for row-wise computation of a Jacobian ("reverse-mode", via
 -- vector-Jacobian products).
-module rows
+module mk_rows (R: real)
   : {
       type prepared [n] [m] [nnz] =
         ([m + 1]i64, [nnz]i64, [n + 1]i64, [nnz]i64, [m]i64)
@@ -45,15 +46,15 @@ module rows
         [m][n]bool -> ?[nnz].prepared [n] [m] [nnz]
 
       val eval_prepared_vjp_csr [m] [n] [nnz] :
-        (f: [n]f64 -> [m]f64)
+        (f: [n]R.t -> [m]R.t)
         -> prepared [n] [m] [nnz]
-        -> (x: [n]f64)
-        -> ([m + 1]i64, [nnz]i64, [nnz]f64)
+        -> (x: [n]R.t)
+        -> ([m + 1]i64, [nnz]i64, [nnz]R.t)
 
       val eval_prepared_vjp_dense [m] [n] [nnz] :
-        (f: [n]f64 -> [m]f64)
+        (f: [n]R.t -> [m]R.t)
         -> prepared [n] [m] [nnz]
-        -> (x: [n]f64) -> [m][n]f64
+        -> (x: [n]R.t) -> [m][n]R.t
     } = {
   type prepared [n] [m] [nnz] =
     ([m + 1]i64, [nnz]i64, [n + 1]i64, [nnz]i64, [m]i64)
@@ -62,10 +63,10 @@ module rows
                                  (row_offs: [m + 1]i64)
                                  (row_idx: [nnz]i64)
                                  (row_colors: [m]i64)
-                                 (ys: [d][n]f64) : [nnz]f64 =
-    let vals0 = replicate nnz 0.0f64
+                                 (ys: [d][n]R.t) : [nnz]R.t =
+    let vals0 = replicate nnz (R.f64 0.0)
     let (vals_final, _i) =
-      loop (vals, i) = (vals0, 0i64)
+      loop (vals, i) = (vals0, 0)
       while i < m do
         let s = row_offs[i]
         let e = row_offs[i + 1]
@@ -73,15 +74,15 @@ module rows
         let rc = row_colors[i]
         let seg = map (\j -> ys[rc][j]) cols
         let vals' = vals with [s:e] = seg
-        in (vals', i + 1i64)
+        in (vals', i + 1)
     in vals_final
 
   def compressed_ys_vjp [m] [n]
-                        (f: [n]f64 -> [m]f64)
+                        (f: [n]R.t -> [m]R.t)
                         (row_colors: [m]i64)
-                        (x: [n]f64) : ?[k].[k][n]f64 =
+                        (x: [n]R.t) : ?[k].[k][n]R.t =
     tabulate (num_colors_of row_colors) \c ->
-      let seed = seed_for_color row_colors c
+      let seed = seed_for_color (R.f64 0) (R.f64 1) row_colors c
       in vjp f x seed
 
   -- Precompute everything from an already available CSR sparsity pattern.
@@ -103,18 +104,18 @@ module rows
 
   -- Return the compressed representation using prepared structure/coloring.
   def eval_prepared_vjp_compressed [m] [n]
-                                   (f: [n]f64 -> [m]f64)
+                                   (f: [n]R.t -> [m]R.t)
                                    (prepared: ([m + 1]i64, []i64, [n + 1]i64, []i64, [m]i64))
-                                   (x: [n]f64) =
+                                   (x: [n]R.t) =
     let (row_offs, row_idx, col_offs, col_idx, row_colors) = prepared
     let ys = compressed_ys_vjp f row_colors x
     in ((row_offs, row_idx), (col_offs, col_idx), row_colors, ys)
 
   -- Return the sparse Jacobian in CSR format using prepared structure/coloring.
   def eval_prepared_vjp_csr [m] [n]
-                            (f: [n]f64 -> [m]f64)
+                            (f: [n]R.t -> [m]R.t)
                             (prepared: ([m + 1]i64, []i64, [n + 1]i64, []i64, [m]i64))
-                            (x: [n]f64) =
+                            (x: [n]R.t) =
     let ((row_offs, row_idx), (_col_offs, _col_idx), row_colors, ys) =
       eval_prepared_vjp_compressed f prepared x
     let vals = vjp_compressed_to_csr_vals row_offs row_idx row_colors ys
@@ -122,12 +123,12 @@ module rows
 
   -- Return a dense Jacobian using prepared structure/coloring.
   def eval_prepared_vjp_dense [m] [n]
-                              (f: [n]f64 -> [m]f64)
+                              (f: [n]R.t -> [m]R.t)
                               (prepared: ([m + 1]i64, []i64, [n + 1]i64, []i64, [m]i64))
-                              (x: [n]f64) : [m][n]f64 =
+                              (x: [n]R.t) : [m][n]R.t =
     let (row_offs, row_idx, vals) =
       eval_prepared_vjp_csr f prepared x
-    in csr_to_dense row_offs row_idx vals
+    in csr_to_dense (R.f64 0) row_offs row_idx vals
 
   -- Compressed output:
   -- Returns:
@@ -135,9 +136,9 @@ module rows
   --
   -- This is the compressed Jacobian representation:
   def jac_vjp_compressed [m] [n]
-                         (f: [n]f64 -> [m]f64)
+                         (f: [n]R.t -> [m]R.t)
                          (pat: [m][n]bool)
-                         (x: [n]f64) =
+                         (x: [n]R.t) =
     let prepared = prepare_vjp pat
     in eval_prepared_vjp_compressed f prepared x
 
@@ -145,50 +146,50 @@ module rows
   -- Returns the Jacobian in CSR format:
   --   (row_offs, row_idx, vals)
   def jac_vjp_csr [m] [n]
-                  (f: [n]f64 -> [m]f64)
+                  (f: [n]R.t -> [m]R.t)
                   (pat: [m][n]bool)
-                  (x: [n]f64) =
+                  (x: [n]R.t) =
     let prepared = prepare_vjp pat
     in eval_prepared_vjp_csr f prepared x
 
   -- Dense output:
   def jac_vjp_dense [m] [n]
-                    (f: [n]f64 -> [m]f64)
+                    (f: [n]R.t -> [m]R.t)
                     (pat: [m][n]bool)
-                    (x: [n]f64) : [m][n]f64 =
+                    (x: [n]R.t) : [m][n]R.t =
     let prepared = prepare_vjp pat
     in eval_prepared_vjp_dense f prepared x
 
   -- Compressed output from an already available CSR sparsity pattern.
   def jac_vjp_compressed_from_csr [m] [n]
-                                  (f: [n]f64 -> [m]f64)
+                                  (f: [n]R.t -> [m]R.t)
                                   (row_offs: [m + 1]i64)
                                   (row_idx: []i64)
                                   (col_offs: [n + 1]i64)
                                   (col_idx: []i64)
-                                  (x: [n]f64) =
+                                  (x: [n]R.t) =
     let prepared =
       prepare_vjp_from_csr row_offs row_idx col_offs col_idx
     in eval_prepared_vjp_compressed f prepared x
 
   -- Sparse / CSR output from an already available CSR sparsity pattern.
   def jac_vjp_csr_from_csr [m] [n]
-                           (f: [n]f64 -> [m]f64)
+                           (f: [n]R.t -> [m]R.t)
                            (row_offs: [m + 1]i64)
                            (row_idx: []i64)
                            (col_offs: [n + 1]i64)
                            (col_idx: []i64)
-                           (x: [n]f64) =
+                           (x: [n]R.t) =
     let prepared =
       prepare_vjp_from_csr row_offs row_idx col_offs col_idx
     in eval_prepared_vjp_csr f prepared x
 
   -- Like jac_vjp_compressed, but assumes row colors are already computed.
   def jac_vjp_compressed_with_row_colors [m] [n]
-                                         (f: [n]f64 -> [m]f64)
+                                         (f: [n]R.t -> [m]R.t)
                                          (pat: [m][n]bool)
                                          (row_colors: [m]i64)
-                                         (x: [n]f64) =
+                                         (x: [n]R.t) =
     let ((row_offs, row_idx), (col_offs, col_idx)) =
       CSR.csr_bipartite_from_pattern pat
     let ys = compressed_ys_vjp f row_colors x
@@ -196,10 +197,10 @@ module rows
 
   -- Like jac_vjp_csr, but assumes row colors are already computed.
   def jac_vjp_csr_with_row_colors [m] [n]
-                                  (f: [n]f64 -> [m]f64)
+                                  (f: [n]R.t -> [m]R.t)
                                   (pat: [m][n]bool)
                                   (row_colors: [m]i64)
-                                  (x: [n]f64) =
+                                  (x: [n]R.t) =
     let ((row_offs, row_idx), (_col_offs, _col_idx), _row_colors, ys) =
       jac_vjp_compressed_with_row_colors f pat row_colors x
     let vals = vjp_compressed_to_csr_vals row_offs row_idx row_colors ys
@@ -207,18 +208,18 @@ module rows
 
   -- Like jac_vjp_dense, but assumes row colors are already computed
   def jac_vjp_dense_with_row_colors [m] [n]
-                                    (f: [n]f64 -> [m]f64)
+                                    (f: [n]R.t -> [m]R.t)
                                     (pat: [m][n]bool)
                                     (row_colors: [m]i64)
-                                    (x: [n]f64) : [m][n]f64 =
+                                    (x: [n]R.t) : [m][n]R.t =
     let (row_offs, row_idx, vals) =
       jac_vjp_csr_with_row_colors f pat row_colors x
-    in csr_to_dense row_offs row_idx vals
+    in csr_to_dense (R.f64 0) row_offs row_idx vals
 }
 
 -- | Facilities for column-wise computation of sparse Jacobians ("forward-mode",
 -- via Jacobian-vector products).
-module cols
+module mk_cols (R: real)
   : {
       type prepared [n] [m] [nnz] =
         ([m + 1]i64, [nnz]i64, [n + 1]i64, [nnz]i64, [n]i64)
@@ -227,15 +228,15 @@ module cols
         [m][n]bool -> ?[nnz].prepared [n] [m] [nnz]
 
       val eval_prepared_jvp_csr [m] [n] [nnz] :
-        (f: [n]f64 -> [m]f64)
+        (f: [n]R.t -> [m]R.t)
         -> prepared [n] [m] [nnz]
-        -> (x: [n]f64)
-        -> ([m + 1]i64, [nnz]i64, [nnz]f64)
+        -> (x: [n]R.t)
+        -> ([m + 1]i64, [nnz]i64, [nnz]R.t)
 
       val eval_prepared_jvp_dense [m] [n] [nnz] :
-        (f: [n]f64 -> [m]f64)
+        (f: [n]R.t -> [m]R.t)
         -> prepared [n] [m] [nnz]
-        -> (x: [n]f64) -> [m][n]f64
+        -> (x: [n]R.t) -> [m][n]R.t
     } = {
   type prepared [n] [m] [nnz] =
     ([m + 1]i64, [nnz]i64, [n + 1]i64, [nnz]i64, [n]i64)
@@ -248,26 +249,26 @@ module cols
                                  (row_offs: [m + 1]i64)
                                  (row_idx: [nnz]i64)
                                  (colors: [n]i64)
-                                 (ys: [d][m]f64) : [nnz]f64 =
-    let vals0 = replicate nnz 0.0f64
+                                 (ys: [d][m]R.t) : [nnz]R.t =
+    let vals0 = replicate nnz (R.f64 0)
     let (vals_final, _i) =
-      loop (vals, i) = (vals0, 0i64)
+      loop (vals, i) = (vals0, 0)
       while i < m do
         let s = row_offs[i]
         let e = row_offs[i + 1]
         let cols = row_idx[s:e]
         let seg = map (\j -> ys[colors[j]][i]) cols
         let vals' = vals with [s:e] = seg
-        in (vals', i + 1i64)
+        in (vals', i + 1)
     in vals_final
 
   def compressed_ys_jvp [m] [n]
-                        (f: [n]f64 -> [m]f64)
+                        (f: [n]R.t -> [m]R.t)
                         (colors: [n]i64)
-                        (x: [n]f64) : ?[k].[k][m]f64 =
+                        (x: [n]R.t) : ?[k].[k][m]R.t =
     let nc = num_colors_of colors
     in map (\c ->
-              let seed = seed_for_color colors c
+              let seed = seed_for_color (R.f64 0) (R.f64 1) colors c
               in jvp f x seed)
            (iota nc)
 
@@ -290,18 +291,18 @@ module cols
 
   -- Return the compressed representation using prepared structure/coloring.
   def eval_prepared_jvp_compressed [m] [n]
-                                   (f: [n]f64 -> [m]f64)
+                                   (f: [n]R.t -> [m]R.t)
                                    (prepared: ([m + 1]i64, []i64, [n + 1]i64, []i64, [n]i64))
-                                   (x: [n]f64) =
+                                   (x: [n]R.t) =
     let (row_offs, row_idx, col_offs, col_idx, colors) = prepared
     let ys = compressed_ys_jvp f colors x
     in ((row_offs, row_idx), (col_offs, col_idx), colors, ys)
 
   -- Return the sparse Jacobian in CSR format using prepared structure/coloring.
   def eval_prepared_jvp_csr [m] [n]
-                            (f: [n]f64 -> [m]f64)
+                            (f: [n]R.t -> [m]R.t)
                             (prepared: ([m + 1]i64, []i64, [n + 1]i64, []i64, [n]i64))
-                            (x: [n]f64) =
+                            (x: [n]R.t) =
     let ((row_offs, row_idx), (_col_offs, _col_idx), colors, ys) =
       eval_prepared_jvp_compressed f prepared x
     let vals = jvp_compressed_to_csr_vals row_offs row_idx colors ys
@@ -309,21 +310,21 @@ module cols
 
   -- Return a dense Jacobian using prepared structure/coloring.
   def eval_prepared_jvp_dense [m] [n]
-                              (f: [n]f64 -> [m]f64)
+                              (f: [n]R.t -> [m]R.t)
                               (prepared: ([m + 1]i64, []i64, [n + 1]i64, []i64, [n]i64))
-                              (x: [n]f64) : [m][n]f64 =
+                              (x: [n]R.t) : [m][n]R.t =
     let (row_offs, row_idx, vals) =
       eval_prepared_jvp_csr f prepared x
-    in csr_to_dense row_offs row_idx vals
+    in csr_to_dense (R.f64 0) row_offs row_idx vals
 
   -- Compressed output:
   -- Returns:
   --   ((row_offs,row_idx), (col_offs,col_idx), colors, ys)
   -- This is the compressed Jacobian representation:
   def jac_jvp_compressed [m] [n]
-                         (f: [n]f64 -> [m]f64)
+                         (f: [n]R.t -> [m]R.t)
                          (pat: [m][n]bool)
-                         (x: [n]f64) =
+                         (x: [n]R.t) =
     let prepared = prepare_jvp pat
     in eval_prepared_jvp_compressed f prepared x
 
@@ -331,50 +332,50 @@ module cols
   -- Returns the Jacobian in CSR format:
   --   (row_offs, row_idx, vals)
   def jac_jvp_csr [m] [n]
-                  (f: [n]f64 -> [m]f64)
+                  (f: [n]R.t -> [m]R.t)
                   (pat: [m][n]bool)
-                  (x: [n]f64) =
+                  (x: [n]R.t) =
     let prepared = prepare_jvp pat
     in eval_prepared_jvp_csr f prepared x
 
   -- Dense output:
   def jac_jvp_dense [m] [n]
-                    (f: [n]f64 -> [m]f64)
+                    (f: [n]R.t -> [m]R.t)
                     (pat: [m][n]bool)
-                    (x: [n]f64) : [m][n]f64 =
+                    (x: [n]R.t) : [m][n]R.t =
     let prepared = prepare_jvp pat
     in eval_prepared_jvp_dense f prepared x
 
   -- Compressed output from an already available CSR sparsity pattern.
   def jac_jvp_compressed_from_csr [m] [n]
-                                  (f: [n]f64 -> [m]f64)
+                                  (f: [n]R.t -> [m]R.t)
                                   (row_offs: [m + 1]i64)
                                   (row_idx: []i64)
                                   (col_offs: [n + 1]i64)
                                   (col_idx: []i64)
-                                  (x: [n]f64) =
+                                  (x: [n]R.t) =
     let prepared =
       prepare_jvp_from_csr row_offs row_idx col_offs col_idx
     in eval_prepared_jvp_compressed f prepared x
 
   -- Sparse / CSR output from an already available CSR sparsity pattern.
   def jac_jvp_csr_from_csr [m] [n]
-                           (f: [n]f64 -> [m]f64)
+                           (f: [n]R.t -> [m]R.t)
                            (row_offs: [m + 1]i64)
                            (row_idx: []i64)
                            (col_offs: [n + 1]i64)
                            (col_idx: []i64)
-                           (x: [n]f64) =
+                           (x: [n]R.t) =
     let prepared =
       prepare_jvp_from_csr row_offs row_idx col_offs col_idx
     in eval_prepared_jvp_csr f prepared x
 
   -- Like jac_jvp_compressed, but assumes colors are already computed.
   def jac_jvp_compressed_with_colors [m] [n]
-                                     (f: [n]f64 -> [m]f64)
+                                     (f: [n]R.t -> [m]R.t)
                                      (pat: [m][n]bool)
                                      (colors: [n]i64)
-                                     (x: [n]f64) =
+                                     (x: [n]R.t) =
     let ((row_offs, row_idx), (col_offs, col_idx)) =
       CSR.csr_bipartite_from_pattern pat
     let ys = compressed_ys_jvp f colors x
@@ -382,10 +383,10 @@ module cols
 
   -- Like jac_jvp_csr, but assumes colors are already computed.
   def jac_jvp_csr_with_colors [m] [n]
-                              (f: [n]f64 -> [m]f64)
+                              (f: [n]R.t -> [m]R.t)
                               (pat: [m][n]bool)
                               (colors: [n]i64)
-                              (x: [n]f64) =
+                              (x: [n]R.t) =
     let ((row_offs, row_idx), (_col_offs, _col_idx), _colors, ys) =
       jac_jvp_compressed_with_colors f pat colors x
     let vals = jvp_compressed_to_csr_vals row_offs row_idx colors ys
@@ -393,47 +394,50 @@ module cols
 
   -- Like jac_jvp_dense, but assumes colors are already computed
   def jac_jvp_dense_with_colors [m] [n]
-                                (f: [n]f64 -> [m]f64)
+                                (f: [n]R.t -> [m]R.t)
                                 (pat: [m][n]bool)
                                 (colors: [n]i64)
-                                (x: [n]f64) : [m][n]f64 =
+                                (x: [n]R.t) : [m][n]R.t =
     let (row_offs, row_idx, vals) =
       jac_jvp_csr_with_colors f pat colors x
-    in csr_to_dense row_offs row_idx vals
+    in csr_to_dense (R.f64 0) row_offs row_idx vals
 }
 
 -- | Computation of sparse Jacobians by automatically trying to pick an
 -- intelligent approach.
-module auto
+module mk_auto (R: real)
   : {
       val jac_auto_csr [m] [n] :
-        (f: [n]f64 -> [m]f64)
+        (f: [n]R.t -> [m]R.t)
         -> (pat: [m][n]bool)
-        -> (x: [n]f64)
-        -> ?[nnz].([m + 1]i64, [nnz]i64, [nnz]f64)
+        -> (x: [n]R.t)
+        -> ?[nnz].([m + 1]i64, [nnz]i64, [nnz]R.t)
 
       val jac_auto_dense_with_info [m] [n] :
-        (f: [n]f64 -> [m]f64)
+        (f: [n]R.t -> [m]R.t)
         -> (pat: [m][n]bool)
-        -> (x: [n]f64)
-        -> ([m][n]f64, bool, i64, i64)
+        -> (x: [n]R.t)
+        -> ([m][n]R.t, bool, i64, i64)
 
       val jac_auto_csr_from_csr_with_info [m] [n] [nnz] :
-        (f: [n]f64 -> [m]f64)
+        (f: [n]R.t -> [m]R.t)
         -> (row_offs: [m + 1]i64)
         -> (row_idx: [nnz]i64)
         -> (col_offs: [n + 1]i64)
         -> (col_idx: [nnz]i64)
-        -> (x: [n]f64)
-        -> (([m + 1]i64, [nnz]i64, [nnz]f64), bool, i64, i64)
+        -> (x: [n]R.t)
+        -> (([m + 1]i64, [nnz]i64, [nnz]R.t), bool, i64, i64)
 
       -- | Sparse / CSR output with metadata.
       val jac_auto_csr_with_info [m] [n] :
-        (f: [n]f64 -> [m]f64)
+        (f: [n]R.t -> [m]R.t)
         -> (pat: [m][n]bool)
-        -> (x: [n]f64)
-        -> ?[nnz].(([m + 1]i64, [nnz]i64, [nnz]f64), bool, i64, i64)
+        -> (x: [n]R.t)
+        -> ?[nnz].(([m + 1]i64, [nnz]i64, [nnz]R.t), bool, i64, i64)
     } = {
+  module rows = mk_rows R
+  module cols = mk_cols R
+
   -- Precompute the structure-dependent part from an already available CSR
   -- sparsity pattern.
   def prepare_jac_auto_from_csr [m] [n]
@@ -491,7 +495,7 @@ module auto
 
   -- Return the sparse Jacobian in CSR format using prepared structure/coloring.
   def eval_prepared_auto_csr [m] [n]
-                             (f: [n]f64 -> [m]f64)
+                             (f: [n]R.t -> [m]R.t)
                              (prepared: ( [m + 1]i64
                                         , []i64
                                         , [n + 1]i64
@@ -503,7 +507,7 @@ module auto
                                         , bool
                                         )
                              )
-                             (x: [n]f64) =
+                             (x: [n]R.t) =
     let ( row_offs
         , row_idx
         , col_offs
@@ -523,7 +527,7 @@ module auto
 
   -- Return the sparse Jacobian in CSR format with metadata.
   def eval_prepared_auto_csr_with_info [m] [n]
-                                       (f: [n]f64 -> [m]f64)
+                                       (f: [n]R.t -> [m]R.t)
                                        (prepared: ( [m + 1]i64
                                                   , []i64
                                                   , [n + 1]i64
@@ -535,7 +539,7 @@ module auto
                                                   , bool
                                                   )
                                        )
-                                       (x: [n]f64) =
+                                       (x: [n]R.t) =
     let ( _row_offs
         , _row_idx
         , _col_offs
@@ -553,7 +557,7 @@ module auto
 
   -- Return a dense Jacobian using prepared structure/coloring.
   def eval_prepared_auto_dense [m] [n]
-                               (f: [n]f64 -> [m]f64)
+                               (f: [n]R.t -> [m]R.t)
                                (prepared: ( [m + 1]i64
                                           , []i64
                                           , [n + 1]i64
@@ -565,7 +569,7 @@ module auto
                                           , bool
                                           )
                                )
-                               (x: [n]f64) : [m][n]f64 =
+                               (x: [n]R.t) : [m][n]R.t =
     let ( row_offs
         , row_idx
         , col_offs
@@ -585,7 +589,7 @@ module auto
 
   -- Return a dense Jacobian with metadata.
   def eval_prepared_auto_dense_with_info [m] [n]
-                                         (f: [n]f64 -> [m]f64)
+                                         (f: [n]R.t -> [m]R.t)
                                          (prepared: ( [m + 1]i64
                                                     , []i64
                                                     , [n + 1]i64
@@ -597,7 +601,7 @@ module auto
                                                     , bool
                                                     )
                                          )
-                                         (x: [n]f64) : ([m][n]f64, bool, i64, i64) =
+                                         (x: [n]R.t) : ([m][n]R.t, bool, i64, i64) =
     let ( _row_offs
         , _row_idx
         , _col_offs
@@ -631,28 +635,28 @@ module auto
 
   -- Sparse / CSR output.
   def jac_auto_csr [m] [n]
-                   (f: [n]f64 -> [m]f64)
+                   (f: [n]R.t -> [m]R.t)
                    (pat: [m][n]bool)
-                   (x: [n]f64) =
+                   (x: [n]R.t) =
     let prepared = prepare_jac_auto pat
     in eval_prepared_auto_csr f prepared x
 
   -- Sparse / CSR output with metadata.
   def jac_auto_csr_with_info [m] [n]
-                             (f: [n]f64 -> [m]f64)
+                             (f: [n]R.t -> [m]R.t)
                              (pat: [m][n]bool)
-                             (x: [n]f64) =
+                             (x: [n]R.t) =
     let prepared = prepare_jac_auto pat
     in eval_prepared_auto_csr_with_info f prepared x
 
   -- Sparse / CSR output from an already available CSR sparsity pattern.
   def jac_auto_csr_from_csr [m] [n]
-                            (f: [n]f64 -> [m]f64)
+                            (f: [n]R.t -> [m]R.t)
                             (row_offs: [m + 1]i64)
                             (row_idx: []i64)
                             (col_offs: [n + 1]i64)
                             (col_idx: []i64)
-                            (x: [n]f64) =
+                            (x: [n]R.t) =
     let prepared =
       prepare_jac_auto_from_csr row_offs row_idx col_offs col_idx
     in eval_prepared_auto_csr f prepared x
@@ -660,29 +664,29 @@ module auto
   -- Sparse / CSR output with metadata from an already available CSR sparsity
   -- pattern.
   def jac_auto_csr_from_csr_with_info [m] [n]
-                                      (f: [n]f64 -> [m]f64)
+                                      (f: [n]R.t -> [m]R.t)
                                       (row_offs: [m + 1]i64)
                                       (row_idx: []i64)
                                       (col_offs: [n + 1]i64)
                                       (col_idx: []i64)
-                                      (x: [n]f64) =
+                                      (x: [n]R.t) =
     let prepared =
       prepare_jac_auto_from_csr row_offs row_idx col_offs col_idx
     in eval_prepared_auto_csr_with_info f prepared x
 
   -- Dense output.
   def jac_auto_dense [m] [n]
-                     (f: [n]f64 -> [m]f64)
+                     (f: [n]R.t -> [m]R.t)
                      (pat: [m][n]bool)
-                     (x: [n]f64) : [m][n]f64 =
+                     (x: [n]R.t) : [m][n]R.t =
     let prepared = prepare_jac_auto pat
     in eval_prepared_auto_dense f prepared x
 
   -- Dense output with metadata.
   def jac_auto_dense_with_info [m] [n]
-                               (f: [n]f64 -> [m]f64)
+                               (f: [n]R.t -> [m]R.t)
                                (pat: [m][n]bool)
-                               (x: [n]f64) : ([m][n]f64, bool, i64, i64) =
+                               (x: [n]R.t) : ([m][n]R.t, bool, i64, i64) =
     let prepared = prepare_jac_auto pat
     in eval_prepared_auto_dense_with_info f prepared x
 }

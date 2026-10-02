@@ -55,6 +55,8 @@ def pat_jvp_choice : [4][4]bool =
   , [true, false, false, false]
   ]
 
+module auto = mk_auto f64
+
 -- JVP-choice dense output: auto selects JVP and matches masked dense Jacobian.
 -- ==
 -- entry: test_sparse_auto_jvp_choice_dense_with_info
