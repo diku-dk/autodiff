@@ -3,6 +3,10 @@
 -- This file exposes a lot of facilities, but you probably want to use the
 -- `mk_auto` module.
 --
+-- The modules that provide functionality are parameterised over the number
+-- representation. Most users will want to instantiate them with either the
+-- `f32` or `f64` modules.
+--
 -- ## Acknowledgements
 --
 -- Based on work by Elias Smedegaard.
