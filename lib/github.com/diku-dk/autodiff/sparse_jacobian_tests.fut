@@ -26,19 +26,6 @@ def mask_with_pattern [m] [n] (pat: [m][n]bool) (j: [m][n]f64) : [m][n]f64 =
        pat
        j
 
-def csr_to_dense [m] [n]
-                 (row_offs: [m + 1]i64)
-                 (row_idx: []i64)
-                 (vals: []f64) : [m][n]f64 =
-  map (\i ->
-         let s = row_offs[i]
-         let e = row_offs[i + 1]
-         let cols = row_idx[s:e]
-         let vs = vals[s:e]
-         let row0: [n]f64 = replicate n 0.0f64
-         in scatter row0 cols vs)
-      (iota m)
-
 -- Example 1: JVP should be preferred.
 -- Column coloring needs 2 colors, row coloring needs 4 colors.
 def f_jvp_choice (x: [4]f64) : [4]f64 =
@@ -66,8 +53,8 @@ entry test_sparse_auto_jvp_choice_dense_with_info (x: [4]f64) : bool =
   let eps = 1e-9f64
   let jd = mask_with_pattern pat_jvp_choice (jac_dense_jvp f_jvp_choice x)
   let (ja, use_jvp, num_col_colors, num_row_colors) =
-    auto.jac_dense_with_info f_jvp_choice pat_jvp_choice x
-  in approx_eq_mat ja jd eps
+    auto.jac_csr_with_info f_jvp_choice pat_jvp_choice x
+  in approx_eq_mat (csr_to_dense 0 ja) jd eps
      && use_jvp
      && num_col_colors == 2i64
      && num_row_colors == 4i64
@@ -80,9 +67,9 @@ entry test_sparse_auto_jvp_choice_dense_with_info (x: [4]f64) : bool =
 entry test_sparse_auto_jvp_choice_csr_with_info (x: [4]f64) : bool =
   let eps = 1e-9f64
   let jd = mask_with_pattern pat_jvp_choice (jac_dense_jvp f_jvp_choice x)
-  let ((row_offs, row_idx, vals), use_jvp, num_col_colors, num_row_colors) =
+  let (csr, use_jvp, num_col_colors, num_row_colors) =
     auto.jac_csr_with_info f_jvp_choice pat_jvp_choice x
-  let ja = csr_to_dense row_offs row_idx vals
+  let ja = csr_to_dense 0 csr
   in approx_eq_mat ja jd eps
      && use_jvp
      && num_col_colors == 2i64
@@ -113,8 +100,8 @@ entry test_sparse_auto_vjp_choice_dense_with_info (x: [4]f64) : bool =
   let eps = 1e-9f64
   let jd = mask_with_pattern pat_vjp_choice (jac_dense_jvp f_vjp_choice x)
   let (ja, use_jvp, num_col_colors, num_row_colors) =
-    auto.jac_dense_with_info f_vjp_choice pat_vjp_choice x
-  in approx_eq_mat ja jd eps
+    auto.jac_csr_with_info f_vjp_choice pat_vjp_choice x
+  in approx_eq_mat (csr_to_dense 0 ja) jd eps
      && !use_jvp
      && num_col_colors == 4i64
      && num_row_colors == 2i64
@@ -127,9 +114,9 @@ entry test_sparse_auto_vjp_choice_dense_with_info (x: [4]f64) : bool =
 entry test_sparse_auto_vjp_choice_csr_with_info (x: [4]f64) : bool =
   let eps = 1e-9f64
   let jd = mask_with_pattern pat_vjp_choice (jac_dense_jvp f_vjp_choice x)
-  let ((row_offs, row_idx, vals), use_jvp, num_col_colors, num_row_colors) =
+  let (csr, use_jvp, num_col_colors, num_row_colors) =
     auto.jac_csr_with_info f_vjp_choice pat_vjp_choice x
-  let ja = csr_to_dense row_offs row_idx vals
+  let ja = csr_to_dense 0 csr
   in approx_eq_mat ja jd eps
      && !use_jvp
      && num_col_colors == 4i64
@@ -157,8 +144,8 @@ entry test_sparse_auto_tie_prefers_jvp (x: [5]f64) : bool =
   let eps = 1e-9f64
   let jd = mask_with_pattern pat_tie_choice (jac_dense_jvp f_tie_choice x)
   let (ja, use_jvp, num_col_colors, num_row_colors) =
-    auto.jac_dense_with_info f_tie_choice pat_tie_choice x
-  in approx_eq_mat ja jd eps
+    auto.jac_csr_with_info f_tie_choice pat_tie_choice x
+  in approx_eq_mat (csr_to_dense 0 ja) jd eps
      && use_jvp
      && num_col_colors == 1i64
      && num_row_colors == 1i64
@@ -180,9 +167,8 @@ def pat_zero : [2][4]bool =
 entry test_sparse_auto_zero_pattern_csr (x: [4]f64) : bool =
   let eps = 1e-9f64
   let jd = mask_with_pattern pat_zero (jac_dense_jvp f_zero x)
-  let (row_offs, row_idx, vals) =
-    auto.jac_csr f_zero pat_zero x
-  let ja = csr_to_dense row_offs row_idx vals
+  let csr = auto.jac_csr f_zero pat_zero x
+  let ja = csr_to_dense 0 csr
   in approx_eq_mat ja jd eps
 
 -- Example 5: mixed nonlinear case with empty row and unused column.
@@ -214,10 +200,9 @@ entry test_sparse_auto_csr_from_csr_with_info (x: [6]f64) : bool =
     mask_with_pattern pat_from_csr (jac_dense_jvp f_from_csr x)
   let ((row_offs, row_idx), (col_offs, col_idx)) =
     CSR.csr_bipartite_from_pattern pat_from_csr
-  let ((out_row_offs, out_row_idx, vals), use_jvp, num_col_colors, num_row_colors) =
+  let (csr, use_jvp, num_col_colors, num_row_colors) =
     auto.jac_csr_from_csr_with_info f_from_csr row_offs row_idx col_offs col_idx x
-  let ja =
-    csr_to_dense out_row_offs out_row_idx vals
+  let ja = csr_to_dense 0 csr
   in approx_eq_mat ja jd eps
      && !use_jvp
      && num_col_colors == 3i64

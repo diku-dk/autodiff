@@ -321,12 +321,6 @@ module mk_auto (R: real)
         -> (x: [n]R.t)
         -> ?[nnz].([m + 1]i64, [nnz]i64, [nnz]R.t)
 
-      val jac_dense_with_info [m] [n] :
-        (f: [n]R.t -> [m]R.t)
-        -> (pat: [m][n]bool)
-        -> (x: [n]R.t)
-        -> ([m][n]R.t, bool, i64, i64)
-
       val jac_csr_from_csr_with_info [m] [n] [nnz] :
         (f: [n]R.t -> [m]R.t)
         -> (row_offs: [m + 1]i64)
