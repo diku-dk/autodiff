@@ -92,35 +92,35 @@ module mk_rows (R: real)
       in vjp f x seed
 
   -- Precompute everything from an already available CSR sparsity pattern.
-  def prepare_from_csr [m] [n]
+  def prepare_from_csr [m] [n] [nnz]
                        (row_offs: [m + 1]i64)
                        (row_idx: []i64)
                        (col_offs: [n + 1]i64)
-                       (col_idx: []i64) =
+                       (col_idx: [nnz]i64) : ?[nnz].prepared [n] [m] [nnz] =
     let row_colors =
       Col.partial_d2_color_rows row_offs row_idx col_offs col_idx
     in (row_offs, row_idx, col_offs, col_idx, row_colors)
 
   -- Precompute everything that only depends on the sparsity pattern.
   def prepare [m] [n]
-              (pat: [m][n]bool) =
+              (pat: [m][n]bool) : ?[nnz].prepared [n] [m] [nnz] =
     let ((row_offs, row_idx), (col_offs, col_idx)) =
       CSR.csr_bipartite_from_pattern pat
     in prepare_from_csr row_offs row_idx col_offs col_idx
 
   -- Return the compressed representation using prepared structure/coloring.
-  def eval_prepared_compressed [m] [n]
+  def eval_prepared_compressed [m] [n] [nnz]
                                (f: [n]R.t -> [m]R.t)
-                               (prepared: ([m + 1]i64, []i64, [n + 1]i64, []i64, [m]i64))
+                               (prepared: prepared [n] [m] [nnz])
                                (x: [n]R.t) =
     let (row_offs, row_idx, col_offs, col_idx, row_colors) = prepared
     let ys = compressed_ys f row_colors x
     in ((row_offs, row_idx), (col_offs, col_idx), row_colors, ys)
 
   -- Return the sparse Jacobian in CSR format using prepared structure/coloring.
-  def prepared_jac_csr [m] [n]
+  def prepared_jac_csr [m] [n] [nnz]
                        (f: [n]R.t -> [m]R.t)
-                       (prepared: ([m + 1]i64, []i64, [n + 1]i64, []i64, [m]i64))
+                       (prepared: prepared [n] [m] [nnz])
                        (x: [n]R.t) =
     let ((row_offs, row_idx), (_col_offs, _col_idx), row_colors, ys) =
       eval_prepared_compressed f prepared x
