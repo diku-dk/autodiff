@@ -457,69 +457,6 @@ module mk_auto (R: real)
       prepared_jac_csr f prepared x
     in ((row_offs, row_idx, vals), use_jvp, num_col_colors, num_row_colors)
 
-  -- Return a dense Jacobian using prepared structure/coloring.
-  def prepared_jac_dense [m] [n]
-                         (f: [n]R.t -> [m]R.t)
-                         (prepared: ( [m + 1]i64
-                                    , []i64
-                                    , [n + 1]i64
-                                    , []i64
-                                    , [n]i64
-                                    , [m]i64
-                                    , i64
-                                    , i64
-                                    , bool
-                                    )
-                         )
-                         (x: [n]R.t) : [m][n]R.t =
-    let ( row_offs
-        , row_idx
-        , col_offs
-        , col_idx
-        , col_colors
-        , row_colors
-        , _num_col_colors
-        , _num_row_colors
-        , use_jvp
-        ) =
-      prepared
-    let jvp_prepared = (row_offs, row_idx, col_offs, col_idx, col_colors)
-    let vjp_prepared = (row_offs, row_idx, col_offs, col_idx, row_colors)
-    in csr_to_dense (R.f64 0)
-                    (if use_jvp
-                     then cols.prepared_jac_csr f jvp_prepared x
-                     else rows.prepared_jac_csr f vjp_prepared x)
-
-  -- Return a dense Jacobian with metadata.
-  def prepared_jac_dense_with_info [m] [n]
-                                   (f: [n]R.t -> [m]R.t)
-                                   (prepared: ( [m + 1]i64
-                                              , []i64
-                                              , [n + 1]i64
-                                              , []i64
-                                              , [n]i64
-                                              , [m]i64
-                                              , i64
-                                              , i64
-                                              , bool
-                                              )
-                                   )
-                                   (x: [n]R.t) : ([m][n]R.t, bool, i64, i64) =
-    let ( _row_offs
-        , _row_idx
-        , _col_offs
-        , _col_idx
-        , _col_colors
-        , _row_colors
-        , num_col_colors
-        , num_row_colors
-        , use_jvp
-        ) =
-      prepared
-    let jac =
-      prepared_jac_dense f prepared x
-    in (jac, use_jvp, num_col_colors, num_row_colors)
-
   -- Returns only the chosen mode and coloring info.
   def jac_choice [m] [n]
                  (pat: [m][n]bool) : (bool, i64, i64) =
@@ -576,12 +513,4 @@ module mk_auto (R: real)
     let prepared =
       prepare_jac_from_csr row_offs row_idx col_offs col_idx
     in prepared_jac_csr_with_info f prepared x
-
-  -- Dense output with metadata.
-  def jac_dense_with_info [m] [n]
-                          (f: [n]R.t -> [m]R.t)
-                          (pat: [m][n]bool)
-                          (x: [n]R.t) : ([m][n]R.t, bool, i64, i64) =
-    let prepared = prepare_jac pat
-    in prepared_jac_dense_with_info f prepared x
 }
